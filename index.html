@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KING BINGO ROYAL - ADVANCED</title>
+    <style>
+        :root { --gold: #ffd700; --dark: #121212; --purp: #8e44ad; --orange: #f39c12; }
+        body { font-family: sans-serif; background: var(--dark); color: white; margin: 0; overflow-x: hidden; }
+        
+        /* Top Bar */
+        .header { display: grid; grid-template-columns: repeat(4, 1fr); background: #000; padding: 10px; border-bottom: 2px solid var(--gold); font-size: 11px; }
+        .header div span { display: block; color: var(--gold); font-weight: bold; font-size: 14px; }
+
+        /* Main Layout */
+        .container { display: flex; padding: 10px; gap: 10px; }
+        .left-panel { flex: 1; }
+        .right-panel { width: 140px; background: #222; padding: 5px; border-radius: 5px; border: 1px solid #444; }
+
+        /* Board Numbers (Live) */
+        .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+        .b-num { width: 22px; height: 22px; background: white; color: black; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; }
+        .b-num.called { background: var(--purp); color: white; box-shadow: 0 0 5px var(--purp); }
+
+        /* Card Preview */
+        .preview-card { background: white; color: black; padding: 10px; border-radius: 8px; margin: 10px 0; display: none; }
+        .p-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; }
+        .p-cell { border: 1px solid #ddd; text-align: center; font-size: 12px; padding: 5px 0; }
+
+        /* Game Grid */
+        .game-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; background: #333; padding: 10px; border-radius: 10px; border: 2px solid var(--gold); }
+        .cell { aspect-ratio: 1; background: white; color: black; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px; border-radius: 4px; }
+        .cell.marked { background: #27ae60 !important; color: white !important; }
+
+        /* Controls */
+        .btn-join { background: var(--orange); border: none; padding: 15px; width: 100%; border-radius: 30px; color: white; font-size: 18px; font-weight: bold; margin-top: 20px; }
+        .pool { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; height: 150px; overflow-y: auto; background: #1a1a1a; padding: 10px; border-radius: 5px; }
+        .c-item { background: #333; padding: 10px 0; text-align: center; border-radius: 5px; cursor: pointer; border: 1px solid #444; }
+        .c-item.selected { background: var(--gold); color: black; }
+
+        .ball-circle { width: 80px; height: 80px; background: white; border-radius: 50%; border: 5px solid var(--gold); margin: 10px auto; display: flex; align-items: center; justify-content: center; color: black; font-size: 35px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="scr-select" class="active">
+        <div class="header">
+            <div>WALLET <span id="wal-top">36.00</span></div>
+            <div>STAKE <span>10.00</span></div>
+            <div>PLAYERS <span id="p-count-top">--</span></div>
+            <div>TIME <span id="time-top">26s</span></div>
+        </div>
+        
+        <div style="padding: 15px;">
+            <h3 style="color:var(--gold)">ካርቴላ ይምረጡ (1-200)</h3>
+            <div class="pool" id="pool-list"></div>
+
+            <div id="card-preview-box" class="preview-card">
+                <div style="font-weight:bold; margin-bottom:5px;">ካርቴላ #<span id="pre-id"></span></div>
+                <div class="p-grid" id="preview-grid"></div>
+            </div>
+
+            <button class="btn-join" onclick="goToWait()">JOIN GAME</button>
+        </div>
+    </div>
+
+    <div id="scr-game" style="display:none;">
+        <div class="header">
+            <div>WALLET <span>26.00</span></div>
+            <div>STAKE <span>10.00</span></div>
+            <div>ORDER <span>4 መስመር</span></div>
+            <div>PRIZE <span id="live-prize">0.00</span></div>
+        </div>
+
+        <div class="container">
+            <div class="left-panel">
+                <div class="ball-circle" id="ball-display">-</div>
+                <div style="background: #c0392b; padding: 8px; border-radius: 5px; font-size: 12px; margin-bottom: 10px;">
+                    የጨዋታ ትዕዛዝ: 4 መስመር (HORIZONTAL)
+                </div>
+                <div class="game-grid" id="main-grid"></div>
+                <button class="btn-join" style="margin-top:10px;" onclick="claimBingo()">BINGO!</button>
+            </div>
+
+            <div class="right-panel">
+                <div style="font-size: 10px; margin-bottom: 5px; text-align: center; color: var(--gold);">LIVE BOARD</div>
+                <div class="board" id="live-board"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedCard = null;
+        let cards = {};
+        let called = [];
+        let players = Math.floor(Math.random() * (150 - 50) + 50);
+
+        function init() {
+            const list = document.getElementById('pool-list');
+            const board = document.getElementById('live-board');
+            
+            // Generate numbers 1-75 for side board
+            for(let i=1; i<=75; i++) {
+                board.innerHTML += `<div class="b-num" id="bn-${i}">${i}</div>`;
+            }
+
+            // Generate 200 cards
+            for(let i=1; i<=200; i++) {
+                let nums = Array.from({length: 75}, (_, k) => k + 1).sort(() => Math.random() - 0.5).slice(0, 25);
+                nums[12] = "KING";
+                cards[i] = nums;
+
+                let div = document.createElement('div');
+                div.className = 'c-item';
+                div.innerText = i;
+                div.onclick = () => showPreview(i, div);
+                list.appendChild(div);
+            }
+            document.getElementById('p-count-top').innerText = players;
+        }
+
+        function showPreview(id, el) {
+            selectedCard = id;
+            document.querySelectorAll('.c-item').forEach(d => d.classList.remove('selected'));
+            el.classList.add('selected');
+            
+            document.getElementById('card-preview-box').style.display = 'block';
+            document.getElementById('pre-id').innerText = id;
+            
+            const pGrid = document.getElementById('preview-grid');
+            pGrid.innerHTML = '';
+            cards[id].forEach(n => {
+                pGrid.innerHTML += `<div class="p-cell" style="${n=='KING'?'background:#2ecc71;color:white':''}">${n=='KING'?'*':n}</div>`;
+            });
+        }
+
+        function goToWait() {
+            if(!selectedCard) return alert("እባክዎ ካርቴላ ይምረጡ");
+            document.getElementById('scr-select').style.display = 'none';
+            document.getElementById('scr-game').style.display = 'block';
+            startPlay();
+        }
+
+        function startPlay() {
+            let prize = (players * 10) - 50;
+            document.getElementById('live-prize').innerText = prize.toFixed(2);
+            
+            const gGrid = document.getElementById('main-grid');
+            cards[selectedCard].forEach((n, i) => {
+                gGrid.innerHTML += `<div class="cell ${n=='KING'?'marked':''}" id="cell-${i}">${n}</div>`;
+            });
+
+            let timer = setInterval(() => {
+                let ball;
+                do { ball = Math.floor(Math.random() * 75) + 1; } while(called.includes(ball));
+                
+                called.push(ball);
+                document.getElementById('ball-display').innerText = ball;
+                document.getElementById(`bn-${ball}`).classList.add('called');
+
+                cards[selectedCard].forEach((n, i) => {
+                    if(n == ball) document.getElementById(`cell-${i}`).classList.add('marked');
+                });
+
+                if(called.length > 24 && Math.random() < 0.05) {
+                    clearInterval(timer);
+                    alert("ቢንጎ ተበልቷል! ተጫዋች #" + Math.floor(Math.random()*200));
+                    location.reload();
+                }
+            }, 3500);
+        }
+
+        init();
+    </script>
+</body>
+</html>
